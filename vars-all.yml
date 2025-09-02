@@ -1,0 +1,3 @@
+pushgateway_url: "http://localhost:9091"   # from control01 perspective
+env: "lab"
+batch_id: "{{ lookup('pipe', 'date +%Y%m%d_%H%M%S') }}"  # unique batch
