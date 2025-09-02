@@ -126,3 +126,6 @@
     url: "{{ pushgateway_url }}/metrics/job/{{ patch_job }}/instance/{{ inventory_hostname }}/batch/{{ batch_id }}"
     method: DELETE
   changed_when: false
+
+
+##Execution (what actually happens): Role starts, sets “start” phase, pushes metrics → Pushgateway holds them. Prometheus scrapes Pushgateway (5s) → samples appear. Grafana auto-refresh shows a card turning from Pending → Patching. If reboot is needed, phase switches to Reboot and publishes again. When done, status=1, duration computed, final push. DELETE cleans that grouping key so you don’t keep stale “done” forever. (Dashboards show the run because Prometheus already scraped and stored samples.)##
