@@ -1,0 +1,9 @@
+---
+- name: Patch fleet and publish status
+  hosts: all
+  gather_facts: true
+  any_errors_fatal: false
+  vars:
+    patch_job: "os_patching"
+  roles:
+    - patching
