@@ -1,0 +1,6 @@
+[all]
+app01 ansible_host=10.0.0.11
+db01  ansible_host=10.0.0.12
+
+[all:vars]
+ansible_user=youruser
