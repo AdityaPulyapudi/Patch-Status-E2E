@@ -1,0 +1,18 @@
+# TYPE patch_target gauge
+patch_target{server="{{ inventory_hostname }}",env="{{ env }}",batch="{{ batch_id }}"} 1
+
+# TYPE patch_phase gauge
+patch_phase{server="{{ inventory_hostname }}",env="{{ env }}",batch="{{ batch_id }}",phase="start"} {{ phase_start | default(0) }}
+patch_phase{server="{{ inventory_hostname }}",env="{{ env }}",batch="{{ batch_id }}",phase="patching"} {{ phase_patching | default(0) }}
+patch_phase{server="{{ inventory_hostname }}",env="{{ env }}",batch="{{ batch_id }}",phase="reboot"} {{ phase_reboot | default(0) }}
+patch_phase{server="{{ inventory_hostname }}",env="{{ env }}",batch="{{ batch_id }}",phase="done"} {{ phase_done | default(0) }}
+
+# TYPE patch_status gauge
+# 1 = success, 0 = fail
+patch_status{server="{{ inventory_hostname }}",env="{{ env }}",batch="{{ batch_id }}"} {{ status | default(0) }}
+
+# TYPE patch_reboot_required gauge
+patch_reboot_required{server="{{ inventory_hostname }}",env="{{ env }}",batch="{{ batch_id }}"} {{ reboot_required | default(0) }}
+
+# TYPE patch_duration_seconds gauge
+patch_duration_seconds{server="{{ inventory_hostname }}",env="{{ env }}",batch="{{ batch_id }}"} {{ duration | default(0) }}
