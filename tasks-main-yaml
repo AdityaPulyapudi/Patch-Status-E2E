@@ -1,0 +1,128 @@
+---
+- name: Initialize timing and phases
+  set_fact:
+    _start_epoch: "{{ ansible_date_time.epoch | int }}"
+    phase_start: 1
+    phase_patching: 0
+    phase_reboot: 0
+    phase_done: 0
+    status: 0
+    reboot_required: 0
+    duration: 0
+
+# Immediately publish "start" phase so Grafana shows a live job beginning
+- name: Push "start" phase metrics
+  uri:
+    url: "{{ pushgateway_url }}/metrics/job/{{ patch_job }}/instance/{{ inventory_hostname }}/batch/{{ batch_id }}"
+    method: POST
+    headers:
+      Content-Type: "text/plain"
+    body: "{{ lookup('template', 'push_metrics.j2') }}"
+  changed_when: false
+
+- name: Set patching phase
+  set_fact:
+    phase_start: 0
+    phase_patching: 1
+
+- name: Ensure cache metadata is fresh (APT/DNF/YUM)
+  block:
+    - name: Update package metadata (APT)
+      apt:
+        update_cache: yes
+      when: ansible_facts.os_family == 'Debian'
+
+    - name: Make cache (DNF/YUM)
+      dnf:
+        update_cache: yes
+      when: ansible_facts.os_family in ['RedHat', 'Rocky', 'AlmaLinux']
+  rescue:
+    - set_fact: status=0
+    - meta: end_play
+
+- name: Apply updates
+  block:
+    - name: Upgrade all packages (Debian)
+      apt:
+        upgrade: dist
+      register: patch_result
+      when: ansible_facts.os_family == 'Debian'
+
+    - name: Upgrade all packages (RHEL family)
+      dnf:
+        name: "*"
+        state: latest
+      register: patch_result
+      when: ansible_facts.os_family in ['RedHat', 'Rocky', 'AlmaLinux']
+
+  rescue:
+    - name: Publish failure mid-flight
+      set_fact:
+        status: 0
+    - name: Push current metrics (failure)
+      uri:
+        url: "{{ pushgateway_url }}/metrics/job/{{ patch_job }}/instance/{{ inventory_hostname }}/batch/{{ batch_id }}"
+        method: POST
+        headers: { Content-Type: "text/plain" }
+        body: "{{ lookup('template', 'push_metrics.j2') }}"
+      changed_when: false
+    - meta: end_play
+
+- name: Determine if reboot is required (Debian-like)
+  shell: "[ -f /var/run/reboot-required ] && echo yes || echo no"
+  register: reboot_flag
+  changed_when: false
+  when: ansible_facts.os_family == 'Debian'
+
+- name: Determine if reboot is required (RHEL-like)
+  shell: "needs-restarting -r >/dev/null 2>&1 && echo yes || echo no"
+  register: reboot_flag
+  changed_when: false
+  failed_when: false
+  when: ansible_facts.os_family in ['RedHat', 'Rocky', 'AlmaLinux']
+
+- name: Set reboot_required fact
+  set_fact:
+    reboot_required: "{{ 1 if reboot_flag.stdout is search('yes') else 0 }}"
+
+- name: Set reboot phase (if needed)
+  set_fact:
+    phase_patching: 0
+    phase_reboot: 1
+  when: reboot_required | int == 1
+
+- name: Push metrics before reboot (so you can see the transition)
+  uri:
+    url: "{{ pushgateway_url }}/metrics/job/{{ patch_job }}/instance/{{ inventory_hostname }}/batch/{{ batch_id }}"
+    method: POST
+    headers: { Content-Type: "text/plain" }
+    body: "{{ lookup('template', 'push_metrics.j2') }}"
+  changed_when: false
+
+- name: Reboot if required
+  reboot:
+    reboot_timeout: 900
+    msg: "Reboot for patching"
+  when: reboot_required | int == 1
+
+- name: Finish timing
+  set_fact:
+    phase_reboot: 0
+    phase_done: 1
+    status: 1
+    duration: "{{ (ansible_date_time.epoch | int) - _start_epoch }}"
+
+- name: Push final success metrics
+  uri:
+    url: "{{ pushgateway_url }}/metrics/job/{{ patch_job }}/instance/{{ inventory_hostname }}/batch/{{ batch_id }}"
+    method: POST
+    headers: { Content-Type: "text/plain" }
+    body: "{{ lookup('template', 'push_metrics.j2') }}"
+  changed_when: false
+
+# IMPORTANT: clean up the grouping key so stale metrics don’t hang around
+- name: Delete metrics for this job/instance/batch (cleanup)
+  uri:
+    url: "{{ pushgateway_url }}/metrics/job/{{ patch_job }}/instance/{{ inventory_hostname }}/batch/{{ batch_id }}"
+    method: DELETE
+  changed_when: false
