@@ -1,0 +1,67 @@
+3) Grafana: build a “Real-time Patch Status” dashboard
+3.1 Add the Prometheus data source
+
+Grafana → Connections → Add data source → Prometheus
+
+URL: http://prometheus:9090 (if you’re in the compose network, or http://control01:9090 if external)
+
+Save & Test.
+
+3.2 Panels and queries (PromQL)
+
+Filter tip: You can filter by a specific run with batch="20250902_104500" or show latest across batches using last_over_time() or max by() (patch_status) depending on your preference. For a live run, you’ll likely pin the dashboard to the current batch_id (add a dashboard variable).
+
+Create a dashboard variable:
+
+Name: batch
+
+Type: Query
+
+Query: label_values(patch_target, batch)
+
+Panel: Total Targets
+sum(patch_target{batch="$batch"})
+
+Panel: Completed (Success)
+sum(patch_status{batch="$batch"})
+
+Panel: Failed
+sum(patch_target{batch="$batch"}) - sum(patch_status{batch="$batch"})
+
+
+(Because we only set status=1 on success; anything not success by the end of the window is effectively a fail/pending—adapt as you like.)
+
+Panel: Reboot Required (count)
+sum(patch_reboot_required{batch="$batch"})
+
+Panel: Average Patch Duration (seconds)
+avg(patch_duration_seconds{batch="$batch"})
+
+Table: Per-host status
+
+Query:
+
+patch_status{batch="$batch"}
+
+
+Format as table and show labels server, env, batch with value=1/0. (Add a value mapping: 1 → “Success”, 0 → “Fail”.)
+
+Bar/Stat: Phase breakdown (live)
+sum by (phase) (patch_phase{batch="$batch"})
+
+
+This shows how many hosts are in start/patching/reboot/done right now.
+
+Execution:
+Grafana queries Prometheus on your refresh interval (e.g., 5s).
+As Ansible pushes phase flips (start→patching→reboot→done), Pushgateway updates → Prometheus scrapes → Grafana shows near real-time state.
+
+3.3 Alerts (Grafana Alerting)
+
+Examples:
+
+Condition: sum(patch_status{batch="$batch"}) < sum(patch_target{batch="$batch"}) for longer than 60m after batch start → “Patching stuck/pending”.
+
+Condition: sum(patch_target{batch="$batch"}) - sum(patch_status{batch="$batch"}) > 0 at batch end time → “Failures present”.
+
+Configure a contact point (email/Slack/Teams) in Grafana Alerting.
