@@ -1,0 +1,12 @@
+~/patch-obs/ansible/
+├── inventories/
+│   └── lab.ini
+├── group_vars/
+│   └── all.yml
+├── roles/
+│   └── patching/
+│       ├── tasks/
+│       │   └── main.yml
+│       └── templates/
+│           └── push_metrics.j2
+└── patch.yml
